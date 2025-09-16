@@ -1,0 +1,236 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { Check, Copy, ExternalLink, X } from 'lucide-react';
+import Link from 'next/link';
+import copy from 'clipboard-copy';
+import TokenCreation from '@/components/token-creation/TokenCreation';
+import { NetworkProvider, useNetwork } from '@/context/NetworkContext';
+import FAQ from '@/components/FAQ';
+import Help from '@/components/Help';
+import TokenLaunchBanner from '@/components/TokenLaunchBanner';
+import { useStateContext } from '@/provider/StateProvider';
+
+function TokenSuccessView({ mintAddress, setMintAddress }: { mintAddress: string, setMintAddress: (address: string | null) => void }) {
+  const [isCopied, setIsCopied] = useState(false);
+  const { network } = useNetwork();
+
+  const getExplorerUrl = (address: string, type: 'address' | 'token' = 'address') => {
+    const baseUrl = network === 'devnet' 
+      ? 'https://explorer.solana.com'
+      : 'https://explorer.solana.com';
+    const cluster = network === 'devnet' ? '?cluster=devnet' : '';
+    return `${baseUrl}/${type}/${address}${cluster}`;
+  };
+
+  const getSolscanUrl = (address: string) => {
+    const baseUrl = network === 'devnet'
+      ? 'https://solscan.io'
+      : 'https://solscan.io';
+    const cluster = network === 'devnet' ? '?cluster=devnet' : '';
+    return `${baseUrl}/token/${address}${cluster}`;
+  };
+
+  const handleCopy = async () => {
+    if (mintAddress) {
+      await copy(mintAddress);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50' id='success-modal'>
+      <div className='bg-gray-900 rounded-2xl max-w-md w-full border border-gray-800 shadow-xl z-50'>
+        <div className='p-6'>
+          <div className='flex items-center gap-2 mb-6'>
+            <button className='h-8 w-8 rounded-full bg-green-500/20 flex items-center justify-center' onClick={() => setMintAddress(null)}>
+              <X className='text-green-500' />
+            </button>
+            <h2 className='text-xl font-semibold text-text-main'>Token Created Successfully!</h2>
+          </div>
+          <div className='space-y-6'>
+            <div className='space-y-2'>
+              <label className='text-sm font-medium text-text-secondary'>Token Address</label>
+              <div className='flex items-center gap-2'>
+                <code className='flex-1 p-2 rounded bg-gray-800 text-sm text-text-secondary overflow-x-auto'>{mintAddress}</code>
+                <button className='shrink-0 p-2 rounded border border-gray-700 hover:bg-gray-800 transition-colors' onClick={handleCopy}>
+                  {isCopied ? <Check className='h-4 w-4 text-text-secondary' /> : <Copy className='h-4 w-4 text-text-secondary' />}
+                </button>
+              </div>
+            </div>
+            <div className='space-y-4'>
+              <Link
+                href={getExplorerUrl(mintAddress, 'address')}
+                target='_blank'
+                className='w-full flex items-center justify-center gap-2 py-2 px-4 rounded border border-gray-700 text-text-secondary hover:bg-gray-800 transition-colors'
+              >
+                <ExternalLink className='h-4 w-4 text-text-secondary' /> View on Explorer ({network})
+              </Link>
+              <Link
+                href={getSolscanUrl(mintAddress)}
+                target='_blank'
+                className='w-full flex items-center justify-center gap-2 py-2 px-4 rounded border border-gray-700 text-text-secondary hover:bg-gray-800 transition-colors'
+              >
+                <ExternalLink className='h-4 w-4 text-text-secondary' /> View on Solscan ({network})
+              </Link>
+              {/* New: Launch on Pump.fun */}
+              <Link
+                href='https://pump.fun/create'
+                target='_blank'
+                className='w-full flex items-center justify-center gap-2 py-2 px-4 rounded border border-green-700 text-green-300 hover:bg-green-950/40 transition-colors'
+                onClick={async () => {
+                  try {
+                    if (mintAddress) {
+                      await copy(mintAddress);
+                      setIsCopied(true);
+                      setTimeout(() => setIsCopied(false), 2000);
+                    }
+                  } catch (e) {
+                    // noop
+                  }
+                }}
+              >
+                <ExternalLink className='h-4 w-4 text-green-300' /> Launch on Pump.fun
+              </Link>
+              <Link
+                href='https://raydium.io/liquidity/create-pool/'
+                target='_blank'
+                className='w-full flex items-center justify-center gap-2 py-2 px-4 rounded border border-gray-700 text-text-secondary hover:bg-gray-800 transition-colors'
+              >
+                <ExternalLink className='h-4 w-4 text-text-secondary' /> Create Liquidity Pool
+              </Link>
+            </div>
+            <div className='border-t border-gray-800 pt-4'>
+              <p className='text-sm text-text-secondary'>Add this token to your wallet using the token address above.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function Home() {
+  const [error, setError] = useState<string | null>(null);
+  const { setConfigData, setLoading, loading } = useStateContext();
+  const [mintAddress, setMintAddress] = useState<string | null>('');
+
+  // If user clicks outside of success model
+  useEffect(() => {
+    const handleClickSuccessOutside = (event: MouseEvent) => {
+      if ((event.target as HTMLElement).id === 'success-modal') {
+        setMintAddress(null);
+      }
+    };
+
+    if (mintAddress) {
+      document.addEventListener('mousedown', handleClickSuccessOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickSuccessOutside);
+    };
+  }, [mintAddress]);
+
+  useEffect(() => {
+    const fetchPublicKey = async () => {
+      setLoading(true); // Start loading
+      try {
+        const response = await fetch('/api/admin', {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          // Handle HTTP errors (e.g., 404, 500)
+          throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        if (data && data.pubKey) {
+          console.log('Received pubKey:', data.pubKey); // Log what you received
+          setConfigData(data);
+        } else {
+          // Handle cases where the response isn't what you expect
+          throw new Error('Invalid response format from /api/admin');
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
+        console.error('Error fetching public key:', err);
+      } finally {
+        setLoading(false); // Stop loading, regardless of success/failure
+      }
+    };
+
+    fetchPublicKey();
+  }, [setConfigData, setLoading]);
+
+  // When user click outsite of error modal
+  useEffect(() => {
+    const handleClickErrorOutside = (event: MouseEvent) => {
+      if ((event.target as HTMLElement).id === 'error-modal') {
+        setError(null);
+      }
+    };
+
+    if (error) {
+      document.addEventListener('mousedown', handleClickErrorOutside);
+    }
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickErrorOutside);
+    };
+  }, [error]);
+  return (
+    <div className='pt-[78px] md:pt-[93px] relative'>
+      <TokenLaunchBanner />
+      <TokenCreation setError={setError} setMintAddress={setMintAddress} />
+      <div className='max-w-[1440px] mx-auto !mb-6 px-4 sm:px-12 subtitle-animate'>
+        <FAQ />
+        <Help />
+      </div>
+
+      {/* Error Modal */}
+      {error && (
+        <div className='fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50' id='error-modal'>
+          <div className='bg-gray-900 rounded-2xl max-w-md w-full border border-gray-800 shadow-xl z-50'>
+            <div className='p-6'>
+              <div className='flex items-center gap-2 mb-6'>
+                <button className='h-8 w-8 rounded-full bg-red-500/20 flex items-center justify-center' onClick={() => setError(null)}>
+                  <X className='text-red-500' />
+                </button>
+                <h2 className='text-xl font-semibold text-text-main'>Error Creating Token</h2>
+              </div>
+              <div className='space-y-6'>
+                <div className='p-4 rounded bg-red-500/10 border border-red-500/20'>
+                  <p className='text-sm text-red-400'>{error}</p>
+                </div>
+                <div className='border-t border-gray-800 pt-4'>
+                  <p className='text-sm text-text-secondary'>Please try again or contact support if the issue persists.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          {/* <div className='absolute inset-0 -z-10' /> */}
+        </div>
+      )}
+
+      {/* Loading Spinner */}
+      {loading && (
+        <div className='fixed inset-0 flex justify-center items-center bg-main bg-opacity-50 z-50'>
+          <div className='animate-spin w-20 h-20 border-4 border-transparent border-t-white rounded-full' />
+        </div>
+      )}
+
+      {mintAddress && (
+        <NetworkProvider>
+          <TokenSuccessView mintAddress={mintAddress} setMintAddress={setMintAddress} />
+        </NetworkProvider>
+      )}
+    </div>
+  );
+}
